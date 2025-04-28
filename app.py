@@ -5,6 +5,9 @@ import joblib
 from feature_utils import resample_to_30fps, extract_features
 import traceback
 import logging
+import platform
+import psutil
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -22,6 +25,76 @@ try:
 except Exception as e:
     logger.error(f"Error loading models: {str(e)}")
     raise
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint to verify server is running"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': time.time(),
+        'uptime': time.time() - psutil.Process().create_time()
+    })
+
+@app.route('/test', methods=['GET'])
+def test_endpoint():
+    """Test endpoint to verify basic functionality"""
+    return jsonify({
+        'message': 'Server is running',
+        'status': 'success',
+        'timestamp': time.time()
+    })
+
+@app.route('/model-info', methods=['GET'])
+def model_info():
+    """Get information about the loaded ML models"""
+    try:
+        ridge_features = ridge_model.n_features_in_ if hasattr(ridge_model, 'n_features_in_') else 'unknown'
+        lasso_features = lasso_model.n_features_in_ if hasattr(lasso_model, 'n_features_in_') else 'unknown'
+        
+        return jsonify({
+            'systolic_model': {
+                'type': type(ridge_model).__name__,
+                'features': ridge_features,
+                'status': 'loaded'
+            },
+            'diastolic_model': {
+                'type': type(lasso_model).__name__,
+                'features': lasso_features,
+                'status': 'loaded'
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'status': 'error'
+        }), 500
+
+@app.route('/status', methods=['GET'])
+def server_status():
+    """Get detailed server status information"""
+    try:
+        return jsonify({
+            'status': 'running',
+            'system': {
+                'platform': platform.platform(),
+                'python_version': platform.python_version(),
+                'memory_usage': f"{psutil.Process().memory_percent():.2f}%",
+                'cpu_usage': f"{psutil.Process().cpu_percent():.2f}%"
+            },
+            'models': {
+                'systolic_loaded': ridge_model is not None,
+                'diastolic_loaded': lasso_model is not None
+            },
+            'storage': {
+                'upload_folder': UPLOAD_FOLDER,
+                'folder_exists': os.path.exists(UPLOAD_FOLDER)
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'status': 'error'
+        }), 500
 
 @app.route('/predict', methods=['POST'])
 def predict():
